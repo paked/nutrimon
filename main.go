@@ -85,12 +85,12 @@ func AllFoodInPantryHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token
 
 	st := []Stock{}
 
-	rows, err := db.Query("SELECT id, brand, category, manufacturer, description FROM pantry WHERE user = ?", u.ID)
+	rows, err := db.Query("SELECT id, weight, brand, category, manufacturer, description FROM pantry WHERE user = ?", u.ID)
 
 	for rows.Next() {
 		s := Stock{}
 
-		err = rows.Scan(&s.ID, &s.Brand, &s.Category, &s.Manufacturer, &s.Description)
+		err = rows.Scan(&s.ID, &s.Weight, &s.Brand, &s.Category, &s.Manufacturer, &s.Description)
 		if err != nil {
 			log.Println(err)
 
