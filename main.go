@@ -158,7 +158,7 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	if s.Weight-quantity < 2 {
 		message := "You are running out of " + s.Name
-		twilio.SendSMS(from, user.Phone, message, "", "")
+		twilio.SendSMS(from, u.Phone, message, "", "")
 	}
 
 	c.OK("consumed.")
