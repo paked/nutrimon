@@ -149,11 +149,11 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 }
 
 type Stock struct {
-	ID          int64
-	Name        string
-	Weight      float64
-	Calories    float64
-	Cholesterol float64
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Weight      float64 `json:"weight"`
+	Calories    float64 `json:"calories"`
+	Cholesterol float64 `json:"cholesterol"`
 }
 
 type stock struct {
