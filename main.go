@@ -14,6 +14,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/paked/gerrycode/communicator"
 	"github.com/paked/restrict"
+	"github.com/sfreiberg/gotwilio"
 )
 
 var (
@@ -41,6 +42,13 @@ func main() {
 		log.Println("Could not open DB")
 		return
 	}
+
+	//Twilio Config
+	from := "+14847184408"
+    to := "+13022564383"
+	accountSid := "AC800a64542126d28255c7c82aa375627f"
+    authToken := "f8c3c917be8b7ec2225a6066eff08719"
+    twilio := gotwilio.NewTwilioClient(accountSid, authToken)
 
 	r := mux.NewRouter()
 
@@ -101,6 +109,12 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	}
 
 	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID)
+	
+	if s.Weight-quantity < 2 {
+		message := "You are running out of " + s.Name
+		twilio.SendSMS(from, to, message, "", "")
+	}
+
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not update pantry")
