@@ -1,0 +1,8 @@
+BEGIN TRANSACTION;
+CREATE TABLE `users` (
+	`id`	INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
+	`username`	TEXT,
+	`password`	TEXT
+);
+;
+COMMIT;
