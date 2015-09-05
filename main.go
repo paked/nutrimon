@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -49,6 +50,9 @@ func main() {
 
 	// Food graph handling
 	r.HandleFunc("/foods/graph", FoodGraphHandler).Methods("GET")
+
+	// Pantry management
+	r.HandleFunc("/pantry", restrict.R(AddFoodToPantry)).Methods("POST")
 
 	http.Handle("/", r)
 
@@ -111,7 +115,7 @@ func RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 		Password: password,
 	}
 
-	res, err := db.Exec("INSERT into users (username, password) VALUES (?, ?)", username, password)
+	res, err := db.Exec("INSERT INTO users (username, password) VALUES (?, ?)", username, password)
 	if err != nil {
 		c.Fail("Could not insert user")
 		return
@@ -183,6 +187,48 @@ func GetUser(key, value string) (User, error) {
 	}
 
 	return u, nil
+}
+
+type Stock struct {
+	ID     int64
+	Name   string
+	Weight float64
+}
+
+func AddFoodToPantry(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+	name := r.FormValue("name")
+	stringWeight := r.FormValue("weight")
+
+	intWeight, err := strconv.Atoi(stringWeight)
+	if err != nil {
+		c.Fail("Could not convert weight")
+		return
+	}
+
+	weight := float64(intWeight)
+
+	s := Stock{
+		Name:   name,
+		Weight: weight,
+	}
+
+	res, err := db.Exec("INSERT INTO pantry (name, weight) VALUES (?, ?)", s.Name, s.Weight)
+	if err != nil {
+		log.Println(err)
+		c.Fail("Could not insert food into pantry")
+		return
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		c.Fail("Could not get ID from new food")
+		return
+	}
+
+	s.ID = id
+
+	c.OKWithData("Added food to pantry", s)
 }
 
 func getUserFromToken(t *jwt.Token) (User, error) {

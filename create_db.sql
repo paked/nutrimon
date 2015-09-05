@@ -4,5 +4,11 @@ CREATE TABLE `users` (
 	`username`	TEXT,
 	`password`	TEXT
 );
+CREATE TABLE "pantry" (
+	`id`	INTEGER PRIMARY KEY AUTOINCREMENT,
+	`name`	TEXT,
+	`db_link`	TEXT,
+	`weight`	REAL
+);
 ;
 COMMIT;
