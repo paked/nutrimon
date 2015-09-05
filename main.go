@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -84,12 +85,12 @@ func AllFoodInPantryHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token
 
 	st := []Stock{}
 
-	rows, err := db.Query("SELECT id, name, weight, cholesterol, calories FROM pantry WHERE user = ?", u.ID)
+	rows, err := db.Query("SELECT id, brand, category, manufacturer, description FROM pantry WHERE user = ?", u.ID)
 
 	for rows.Next() {
 		s := Stock{}
 
-		err = rows.Scan(&s.ID, &s.Name, &s.Weight, &s.Cholesterol, &s.Calories)
+		err = rows.Scan(&s.ID, &s.Brand, &s.Category, &s.Manufacturer, &s.Description)
 		if err != nil {
 			log.Println(err)
 
@@ -131,39 +132,40 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	id := int64(idInt)
 	quantity := float64(quantityInt)
-
+	log.Println(quantity) // TODO use quantity
 	s := Stock{}
 
-	row := db.QueryRow("SELECT id, name, weight, calories, cholesterol FROM pantry WHERE id = ? AND user = ?", id, u.ID)
-	err = row.Scan(&s.ID, &s.Name, &s.Weight, &s.Calories, &s.Cholesterol)
+	row := db.QueryRow("SELECT id, user, brand, category, manufacturer, description FROM pantry WHERE id = ? AND user = ?", id, u.ID)
+	err = row.Scan(&s.ID, &s.Category, &s.Manufacturer, &s.Description)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not get that db")
 		return
 	}
-
-	_, err = db.Exec("INSERT INTO stats_values (value, corresponds, user) VALUES (?, 0, ?)", s.Calories, u.ID)
-	if err != nil {
-		log.Println(err)
-		c.Fail("Could not insert stats")
-		return
-	}
-
-	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ? AND user = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID, u.ID)
-	if err != nil {
-		log.Println(err)
-		c.Fail("Could not update pantry")
-		return
-	}
-
-	if s.Weight-quantity < 2 {
-		message := "You are running out of " + s.Name
-		twilio.SendSMS(from, u.Phone, message, "", "")
-	}
+	/*
+		_, err = db.Exec("INSERT INTO stats_values (value, corresponds, user) VALUES (?, 0, ?)", s.Calories, u.ID)
+		if err != nil {
+			log.Println(err)
+			c.Fail("Could not insert stats")
+			return
+		}*/
+	/*
+		_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ? AND user = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID, u.ID)
+		if err != nil {
+			log.Println(err)
+			c.Fail("Could not update pantry")
+			return
+		}*/
+	/*
+		if s.Weight-quantity < 2 {
+			message := "You are running out of " + s.Name
+			twilio.SendSMS(from, u.Phone, message, "", "")
+		}*/
 
 	c.OK("consumed.")
 }
 
+/*
 type Stock struct {
 	ID          int64   `json:"id"`
 	Name        string  `json:"name"`
@@ -178,6 +180,25 @@ type stock struct {
 	ServingWeight float64 `json:"nf_serving_weight_grams"`
 	Calories      float64 `json:"nf_calories"`
 	Cholesterol   float64 `json:"nf_cholesterol"`
+}*/
+
+type UPCRequest struct {
+	Authentication string            `json:"auth"`
+	Method         string            `json:"method"`
+	Parameters     map[string]string `json:"params"`
+}
+
+type UPCResponse struct {
+	Result Stock `json:"result"`
+}
+
+type Stock struct {
+	ID           int64  `json:"id"`
+	Brand        string `json:"brand"`
+	Category     string `json:"category"`
+	Manufacturer string `json:"manufacturer"`
+	Description  string `json:"description"`
+	UPC          string `json:"upc"`
 }
 
 // Pass in UPC number of new food
@@ -193,31 +214,41 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 		return
 	}
 
+	log.Println(u, s)
+
 	upc := r.FormValue("upc") // send upc to nutritionix
 
-	resp, err := http.Get("https://api.nutritionix.com/v1_1/item?upc=" + upc + "&appId=fcec5a4f&appKey=1c469f40ccb9768147937b582a7b4c3a")
+	upcReq := UPCRequest{
+		Authentication: "Jad19r2OAfrNHpZH2BcuOZQUXDTLhcrS",
+		Method:         "FetchProductByUPC",
+		Parameters:     map[string]string{"upc": upc},
+	}
+
+	jsonStr, err := json.Marshal(upcReq)
 	if err != nil {
-		log.Println(err)
-		c.Fail("Could not get nutrional information")
+		c.Fail("COuld not marshall req")
 		return
 	}
 
-	var st stock
+	url := "http://api.simpleupc.com/v1.php"
 
-	err = json.NewDecoder(resp.Body).Decode(&st)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+
+	cli := http.Client{}
+	resp, err := cli.Do(req)
+	upcResp := UPCResponse{}
+
+	err = json.NewDecoder(resp.Body).Decode(&upcResp)
 	if err != nil {
-		c.Fail("Could not unmarhsal JSON")
+		c.Fail("Could not decode JSON")
 		return
 	}
 
-	s = Stock{
-		Name:        st.Name,
-		Weight:      st.TotalServes * st.ServingWeight,
-		Calories:    st.Calories,
-		Cholesterol: st.Cholesterol,
-	}
+	log.Println(upcResp.Result)
+	s = upcResp.Result
 
-	res, err := db.Exec("INSERT INTO pantry (name, weight, calories, cholesterol, avail, user) VALUES (?, ?, ?, ?, ?, ?)", s.Name, s.Weight, s.Calories, s.Cholesterol, true, u.ID)
+	res, err := db.Exec("INSERT INTO pantry (user, brand, category, manufacturer, description) VALUES (?, ?, ?, ?, ?)", u.ID, s.Brand, s.Category, s.Manufacturer, s.Description)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Kill the pantry")
