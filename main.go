@@ -189,7 +189,8 @@ type UPCRequest struct {
 }
 
 type UPCResponse struct {
-	Result Stock `json:"result"`
+	Result  Stock `json:"result"`
+	Success bool  `json:"success"`
 }
 
 type Stock struct {
@@ -242,6 +243,11 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	err = json.NewDecoder(resp.Body).Decode(&upcResp)
 	if err != nil {
 		c.Fail("Could not decode JSON")
+		return
+	}
+
+	if !upcResp.Success {
+		c.Fail("You what is up you failed!")
 		return
 	}
 
