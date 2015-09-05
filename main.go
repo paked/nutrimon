@@ -19,12 +19,16 @@ import (
 
 var (
 	db *sql.DB
+
+	twilio *gotwilio.Twilio
+	from   string
 )
 
 type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	Password string `json:"-"`
+	Phone    string `json:"phone"`
 }
 
 func (u *User) Login(password string) bool {
@@ -44,11 +48,10 @@ func main() {
 	}
 
 	//Twilio Config
-	from := "+14847184408"
-    to := "+13022564383"
+	from = "+14847184408"
 	accountSid := "AC800a64542126d28255c7c82aa375627f"
-    authToken := "f8c3c917be8b7ec2225a6066eff08719"
-    twilio := gotwilio.NewTwilioClient(accountSid, authToken)
+	authToken := "f8c3c917be8b7ec2225a6066eff08719"
+	twilio = gotwilio.NewTwilioClient(accountSid, authToken)
 
 	r := mux.NewRouter()
 
@@ -145,15 +148,17 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 		c.Fail("Could not insert stats")
 		return
 	}
+
 	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ? AND user = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID, u.ID)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not update pantry")
 		return
 	}
+
 	if s.Weight-quantity < 2 {
 		message := "You are running out of " + s.Name
-		twilio.SendSMS(from, to, message, "", "")
+		twilio.SendSMS(from, user.Phone, message, "", "")
 	}
 
 	c.OK("consumed.")
@@ -192,6 +197,7 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	resp, err := http.Get("https://api.nutritionix.com/v1_1/item?upc=" + upc + "&appId=fcec5a4f&appKey=1c469f40ccb9768147937b582a7b4c3a")
 	if err != nil {
+		log.Println(err)
 		c.Fail("Could not get nutrional information")
 		return
 	}
