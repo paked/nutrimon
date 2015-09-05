@@ -191,6 +191,7 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	weightInt, err := strconv.Atoi(weightString)
 	if err != nil {
 		c.Fail("Could not convert weight")
+		return
 	}
 
 	weight := float64(weightInt)
