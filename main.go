@@ -85,12 +85,12 @@ func AllFoodInPantryHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token
 
 	st := []Stock{}
 
-	rows, err := db.Query("SELECT id, weight, brand, category, manufacturer, description FROM pantry WHERE user = ?", u.ID)
+	rows, err := db.Query("SELECT id, weight, initial_weight, brand, category, manufacturer, description FROM pantry WHERE user = ?", u.ID)
 
 	for rows.Next() {
 		s := Stock{}
 
-		err = rows.Scan(&s.ID, &s.Weight, &s.Brand, &s.Category, &s.Manufacturer, &s.Description)
+		err = rows.Scan(&s.ID, &s.Weight, &s.InitialWeight, &s.Brand, &s.Category, &s.Manufacturer, &s.Description)
 		if err != nil {
 			log.Println(err)
 
@@ -137,8 +137,8 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	s := Stock{}
 
-	row := db.QueryRow("SELECT id, user, brand, category, manufacturer, description FROM pantry WHERE id = ? AND user = ?", id, u.ID)
-	err = row.Scan(&s.ID, &s.Category, &s.Manufacturer, &s.Description)
+	row := db.QueryRow("SELECT id, user, brand, category, manufacturer, description, weight, initial_weight FROM pantry WHERE id = ? AND user = ?", id, u.ID)
+	err = row.Scan(&s.ID, &s.Category, &s.Manufacturer, &s.Description, &s.Weight, &s.InitialWeight)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not get that db")
@@ -172,13 +172,14 @@ type UPCResponse struct {
 }
 
 type Stock struct {
-	ID           int64   `json:"id"`
-	Brand        string  `json:"brand"`
-	Category     string  `json:"category"`
-	Manufacturer string  `json:"manufacturer"`
-	Description  string  `json:"description"`
-	UPC          string  `json:"upc"`
-	Weight       float64 `json:"weight"`
+	ID            int64   `json:"id"`
+	Brand         string  `json:"brand"`
+	Category      string  `json:"category"`
+	Manufacturer  string  `json:"manufacturer"`
+	Description   string  `json:"description"`
+	UPC           string  `json:"upc"`
+	Weight        float64 `json:"weight"`
+	InitialWeight float64 `json:"initial_weight"`
 }
 
 // Pass in UPC number of new food
