@@ -62,6 +62,7 @@ func main() {
 
 	// Pantry management
 	r.HandleFunc("/pantry", restrict.R(RegisterFoodHandler)).Methods("POST")
+	r.HandleFunc("/pantry", restrict.R(AllFoodInPantryHandler)).Methods("GET")
 	r.HandleFunc("/pantry/consume", restrict.R(ConsumeFoodHandler)).Methods("POST")
 
 	http.Handle("/", r)
@@ -69,10 +70,46 @@ func main() {
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
 }
 
+func AllFoodInPantryHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get token from user")
+		return
+	}
+
+	st := []Stock{}
+
+	rows, err := db.Query("SELECT id, name, weight, cholesterol, calories FROM pantry WHERE user = ?", u.ID)
+
+	for rows.Next() {
+		s := Stock{}
+
+		err = rows.Scan(&s.ID, &s.Name, &s.Weight, &s.Cholesterol, &s.Calories)
+		if err != nil {
+			log.Println(err)
+
+			c.Fail("Could not get information out of ID")
+			return
+		}
+
+		st = append(st, s)
+	}
+
+	c.OKWithData("food.", st)
+}
+
 // adds a new data point to relevant statistics
 // removes food items that have "ran out of stock"
 func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	c := communicator.New(w)
+
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get user from token")
+		return
+	}
 
 	idString := r.FormValue("food_item")
 	quantityString := r.FormValue("quantity")
@@ -94,42 +131,40 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	s := Stock{}
 
-	row := db.QueryRow("SELECT id, name, weight, calories, cholesterol FROM pantry WHERE id = ?", id)
+	row := db.QueryRow("SELECT id, name, weight, calories, cholesterol FROM pantry WHERE id = ? AND user = ?", id, u.ID)
 	err = row.Scan(&s.ID, &s.Name, &s.Weight, &s.Calories, &s.Cholesterol)
 	if err != nil {
+		log.Println(err)
 		c.Fail("Could not get that db")
 		return
 	}
 
-	_, err = db.Exec("INSERT INTO stats_values (value, corresponds) VALUES (?, 0)", s.Calories)
+	_, err = db.Exec("INSERT INTO stats_values (value, corresponds, user) VALUES (?, 0, ?)", s.Calories, u.ID)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not insert stats")
 		return
 	}
-
-	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID)
-	
-	if s.Weight-quantity < 2 {
-		message := "You are running out of " + s.Name
-		twilio.SendSMS(from, to, message, "", "")
-	}
-
+	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ? AND user = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID, u.ID)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not update pantry")
 		return
+	}
+	if s.Weight-quantity < 2 {
+		message := "You are running out of " + s.Name
+		twilio.SendSMS(from, to, message, "", "")
 	}
 
 	c.OK("consumed.")
 }
 
 type Stock struct {
-	ID          int64
-	Name        string
-	Weight      float64
-	Calories    float64
-	Cholesterol float64
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Weight      float64 `json:"weight"`
+	Calories    float64 `json:"calories"`
+	Cholesterol float64 `json:"cholesterol"`
 }
 
 type stock struct {
@@ -146,6 +181,12 @@ type stock struct {
 func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	c := communicator.New(w)
 	s := Stock{}
+
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get user from token")
+		return
+	}
 
 	upc := r.FormValue("upc") // send upc to nutritionix
 
@@ -170,7 +211,7 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 		Cholesterol: st.Cholesterol,
 	}
 
-	res, err := db.Exec("INSERT INTO pantry (name, weight, calories, cholesterol, avail) VALUES (?, ?, ?, ?, ?)", s.Name, s.Weight, s.Calories, s.Cholesterol, true)
+	res, err := db.Exec("INSERT INTO pantry (name, weight, calories, cholesterol, avail, user) VALUES (?, ?, ?, ?, ?, ?)", s.Name, s.Weight, s.Calories, s.Cholesterol, true, u.ID)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Kill the pantry")
