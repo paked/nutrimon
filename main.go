@@ -54,11 +54,42 @@ func main() {
 
 	// Pantry management
 	r.HandleFunc("/pantry", restrict.R(RegisterFoodHandler)).Methods("POST")
+	r.HandleFunc("/pantry", restrict.R(AllFoodInPantryHandler)).Methods("GET")
 	r.HandleFunc("/pantry/consume", restrict.R(ConsumeFoodHandler)).Methods("POST")
 
 	http.Handle("/", r)
 
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+}
+
+func AllFoodInPantryHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get token from user")
+		return
+	}
+
+	st := []Stock{}
+
+	rows, err := db.Query("SELECT id, name, weight, cholesterol, calories FROM pantry WHERE user = ?", u.ID)
+
+	for rows.Next() {
+		s := Stock{}
+
+		err = rows.Scan(&s.ID, &s.Name, &s.Weight, &s.Cholesterol, &s.Calories)
+		if err != nil {
+			log.Println(err)
+
+			c.Fail("Could not get information out of ID")
+			return
+		}
+
+		st = append(st, s)
+	}
+
+	c.OKWithData("food.", st)
 }
 
 // adds a new data point to relevant statistics
