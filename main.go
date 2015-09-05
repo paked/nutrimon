@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -52,7 +53,14 @@ func main() {
 }
 
 func SecretHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
-	communicator.New(w).OK("This page is secret!")
+	c := communicator.New(w)
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get user ID from token")
+		return
+	}
+
+	c.OKWithData("Here is your user, welcome to the party", u)
 }
 
 func RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +135,19 @@ func LoginUserHandler(w http.ResponseWriter, r *http.Request) {
 	c.OKWithData("Here is your token", ts)
 }
 
+func GetUserByID(id int64) (User, error) {
+	u := User{}
+
+	row := db.QueryRow("SELECT id, username, password FROM users WHERE id = ?", id)
+
+	err := row.Scan(&u.ID, &u.Username, &u.Password)
+	if err != nil {
+		return u, err
+	}
+
+	return u, nil
+}
+
 func GetUser(key, value string) (User, error) {
 	u := User{}
 
@@ -137,4 +158,15 @@ func GetUser(key, value string) (User, error) {
 	}
 
 	return u, nil
+}
+
+func getUserFromToken(t *jwt.Token) (User, error) {
+	fid, ok := t.Claims["id"].(float64)
+	if !ok {
+		return User{}, errors.New("Could not get user from token")
+	}
+
+	id := int64(fid)
+
+	return GetUserByID(id)
 }
