@@ -300,8 +300,9 @@ func RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	username := r.FormValue("username")
 	password := r.FormValue("password")
+	phone := r.FormValue("phone")
 
-	if username == "" || password == "" {
+	if username == "" || password == "" || phone == "" {
 		c.Fail("Incorrect user input")
 		return
 	}
@@ -315,9 +316,10 @@ func RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	u = User{
 		Username: username,
 		Password: password,
+		Phone:    phone,
 	}
 
-	res, err := db.Exec("INSERT INTO users (username, password) VALUES (?, ?)", username, password)
+	res, err := db.Exec("INSERT INTO users (username, password, phone) VALUES (?, ?, ?)", u.Username, u.Password, u.Phone)
 	if err != nil {
 		c.Fail("Could not insert user")
 		return
