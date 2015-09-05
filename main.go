@@ -248,6 +248,10 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	if !upcResp.Success {
 		c.Fail("You what is up you failed!")
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		s := buf.String()
+		log.Println(s)
 		return
 	}
 
