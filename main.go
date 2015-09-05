@@ -2,10 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -52,11 +52,76 @@ func main() {
 	r.HandleFunc("/foods/graph", FoodGraphHandler).Methods("GET")
 
 	// Pantry management
-	r.HandleFunc("/pantry", restrict.R(AddFoodToPantry)).Methods("POST")
+	r.HandleFunc("/pantry", restrict.R(RegisterFoodHandler)).Methods("POST")
+	// r.HandleFunc("/pantry/consume", restrict.R(ConsumeFoodHandler)).Methods("POST")
 
 	http.Handle("/", r)
 
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+}
+
+type Stock struct {
+	ID          int64
+	Name        string
+	Weight      float64
+	Calories    float64
+	Cholesterol float64
+}
+
+type stock struct {
+	Name          string  `json:"item_name"`
+	TotalServes   float64 `json:"nf_servings_per_container"`
+	ServingWeight float64 `json:"nf_serving_weight_grams"`
+	Calories      float64 `json:"nf_calories"`
+	Cholesterol   float64 `json:"nf_cholesterol"`
+}
+
+// Pass in UPC number of new food
+// * Fetch food info
+// * Cache
+func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+	s := Stock{}
+
+	upc := r.FormValue("upc") // send upc to nutritionix
+
+	resp, err := http.Get("https://api.nutritionix.com/v1_1/item?upc=" + upc + "&appId=fcec5a4f&appKey=1c469f40ccb9768147937b582a7b4c3a")
+	if err != nil {
+		c.Fail("Could not get nutrional information")
+		return
+	}
+
+	var st stock
+
+	err = json.NewDecoder(resp.Body).Decode(&st)
+	if err != nil {
+		c.Fail("Could not unmarhsal JSON")
+		return
+	}
+
+	s = Stock{
+		Name:        st.Name,
+		Weight:      st.TotalServes * st.ServingWeight,
+		Calories:    st.Calories,
+		Cholesterol: st.Cholesterol,
+	}
+
+	res, err := db.Exec("INSERT INTO pantry (name, weight, calories, cholesterol, avail) VALUES (?, ?, ?, ?, ?)", s.Name, s.Weight, s.Calories, s.Cholesterol, true)
+	if err != nil {
+		log.Println(err)
+		c.Fail("Kill the pantry")
+		return
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		c.Fail("Could not get last insert id")
+		return
+	}
+
+	s.ID = id
+
+	c.OKWithData("Here is your res", s)
 }
 
 type Graph struct {
@@ -187,48 +252,6 @@ func GetUser(key, value string) (User, error) {
 	}
 
 	return u, nil
-}
-
-type Stock struct {
-	ID     int64
-	Name   string
-	Weight float64
-}
-
-func AddFoodToPantry(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
-	c := communicator.New(w)
-	name := r.FormValue("name")
-	stringWeight := r.FormValue("weight")
-
-	intWeight, err := strconv.Atoi(stringWeight)
-	if err != nil {
-		c.Fail("Could not convert weight")
-		return
-	}
-
-	weight := float64(intWeight)
-
-	s := Stock{
-		Name:   name,
-		Weight: weight,
-	}
-
-	res, err := db.Exec("INSERT INTO pantry (name, weight) VALUES (?, ?)", s.Name, s.Weight)
-	if err != nil {
-		log.Println(err)
-		c.Fail("Could not insert food into pantry")
-		return
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		c.Fail("Could not get ID from new food")
-		return
-	}
-
-	s.ID = id
-
-	c.OKWithData("Added food to pantry", s)
 }
 
 func getUserFromToken(t *jwt.Token) (User, error) {
