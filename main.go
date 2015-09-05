@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -53,11 +54,60 @@ func main() {
 
 	// Pantry management
 	r.HandleFunc("/pantry", restrict.R(RegisterFoodHandler)).Methods("POST")
-	// r.HandleFunc("/pantry/consume", restrict.R(ConsumeFoodHandler)).Methods("POST")
+	r.HandleFunc("/pantry/consume", restrict.R(ConsumeFoodHandler)).Methods("POST")
 
 	http.Handle("/", r)
 
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+}
+
+// adds a new data point to relevant statistics
+// removes food items that have "ran out of stock"
+func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+
+	idString := r.FormValue("food_item")
+	quantityString := r.FormValue("quantity")
+
+	idInt, err := strconv.Atoi(idString)
+	if err != nil {
+		c.Fail("That id is not int convertable")
+		return
+	}
+
+	quantityInt, err := strconv.Atoi(quantityString)
+	if err != nil {
+		c.Fail("That qunaitty is not convertable")
+		return
+	}
+
+	id := int64(idInt)
+	quantity := float64(quantityInt)
+
+	s := Stock{}
+
+	row := db.QueryRow("SELECT id, name, weight, calories, cholesterol FROM pantry WHERE id = ?", id)
+	err = row.Scan(&s.ID, &s.Name, &s.Weight, &s.Calories, &s.Cholesterol)
+	if err != nil {
+		c.Fail("Could not get that db")
+		return
+	}
+
+	_, err = db.Exec("INSERT INTO stats_values (value, corresponds) VALUES (?, 0)", s.Calories)
+	if err != nil {
+		log.Println(err)
+		c.Fail("Could not insert stats")
+		return
+	}
+
+	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID)
+	if err != nil {
+		log.Println(err)
+		c.Fail("Could not update pantry")
+		return
+	}
+
+	c.OK("consumed.")
 }
 
 type Stock struct {
