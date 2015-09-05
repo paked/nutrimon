@@ -66,6 +66,12 @@ func main() {
 func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	c := communicator.New(w)
 
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get user from token")
+		return
+	}
+
 	idString := r.FormValue("food_item")
 	quantityString := r.FormValue("quantity")
 
@@ -86,21 +92,22 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	s := Stock{}
 
-	row := db.QueryRow("SELECT id, name, weight, calories, cholesterol FROM pantry WHERE id = ?", id)
+	row := db.QueryRow("SELECT id, name, weight, calories, cholesterol FROM pantry WHERE id = ? AND user = ?", id, u.ID)
 	err = row.Scan(&s.ID, &s.Name, &s.Weight, &s.Calories, &s.Cholesterol)
 	if err != nil {
+		log.Println(err)
 		c.Fail("Could not get that db")
 		return
 	}
 
-	_, err = db.Exec("INSERT INTO stats_values (value, corresponds) VALUES (?, 0)", s.Calories)
+	_, err = db.Exec("INSERT INTO stats_values (value, corresponds, user) VALUES (?, 0, ?)", s.Calories, u.ID)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not insert stats")
 		return
 	}
 
-	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID)
+	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ? AND user = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID, u.ID)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Could not update pantry")
@@ -133,6 +140,12 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	c := communicator.New(w)
 	s := Stock{}
 
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get user from token")
+		return
+	}
+
 	upc := r.FormValue("upc") // send upc to nutritionix
 
 	resp, err := http.Get("https://api.nutritionix.com/v1_1/item?upc=" + upc + "&appId=fcec5a4f&appKey=1c469f40ccb9768147937b582a7b4c3a")
@@ -156,7 +169,7 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 		Cholesterol: st.Cholesterol,
 	}
 
-	res, err := db.Exec("INSERT INTO pantry (name, weight, calories, cholesterol, avail) VALUES (?, ?, ?, ?, ?)", s.Name, s.Weight, s.Calories, s.Cholesterol, true)
+	res, err := db.Exec("INSERT INTO pantry (name, weight, calories, cholesterol, avail, user) VALUES (?, ?, ?, ?, ?, ?)", s.Name, s.Weight, s.Calories, s.Cholesterol, true, u.ID)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Kill the pantry")
