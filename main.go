@@ -45,19 +45,14 @@ func main() {
 	// User authentication, registration and management
 	r.HandleFunc("/users/register", RegisterUserHandler).Methods("POST")
 	r.HandleFunc("/users/login", LoginUserHandler).Methods("POST")
-	r.HandleFunc("/secret", restrict.R(SecretHandler)).Methods("GET")
+	r.HandleFunc("/users/info", restrict.R(InfoHandler)).Methods("GET")
 
 	// Food graph handling
 	r.HandleFunc("/foods/graph", FoodGraphHandler).Methods("GET")
-	r.HandleFunc("/foods/recent", FoodRecentHandler).Methods("GET")
 
 	http.Handle("/", r)
 
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
-}
-
-func FoodRecentHandler(w http.ResponseWriter, r *http.Request) {
-	c := communicator.New(w)
 }
 
 type Graph struct {
@@ -82,7 +77,7 @@ func FoodGraphHandler(w http.ResponseWriter, r *http.Request) {
 	c.OKWithData("Here is your graph", fg)
 }
 
-func SecretHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+func InfoHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	c := communicator.New(w)
 	u, err := getUserFromToken(t)
 	if err != nil {
