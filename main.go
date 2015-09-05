@@ -42,14 +42,44 @@ func main() {
 
 	r := mux.NewRouter()
 
-	r.HandleFunc("/user/register", RegisterUserHandler).Methods("POST")
-	r.HandleFunc("/user/login", LoginUserHandler).Methods("POST")
-
+	// User authentication, registration and management
+	r.HandleFunc("/users/register", RegisterUserHandler).Methods("POST")
+	r.HandleFunc("/users/login", LoginUserHandler).Methods("POST")
 	r.HandleFunc("/secret", restrict.R(SecretHandler)).Methods("GET")
+
+	// Food graph handling
+	r.HandleFunc("/foods/graph", FoodGraphHandler).Methods("GET")
+	r.HandleFunc("/foods/recent", FoodRecentHandler).Methods("GET")
 
 	http.Handle("/", r)
 
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+}
+
+func FoodRecentHandler(w http.ResponseWriter, r *http.Request) {
+	c := communicator.New(w)
+}
+
+type Graph struct {
+	Name   string    `json:"name"`
+	Points []float64 `json:"points"`
+}
+
+type FoodGraph struct {
+	Measurements []Graph `json:"measurements"`
+}
+
+func FoodGraphHandler(w http.ResponseWriter, r *http.Request) {
+	c := communicator.New(w)
+	fg := FoodGraph{
+		Measurements: []Graph{
+			// ideas: Weight, Eating Frequency, etc
+			{Name: "Weight", Points: []float64{90, 89, 87, 87.5}},
+			{Name: "Randomo", Points: []float64{22, 35, 44, 25}},
+		},
+	}
+
+	c.OKWithData("Here is your graph", fg)
 }
 
 func SecretHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
