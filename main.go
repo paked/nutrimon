@@ -71,7 +71,7 @@ func main() {
 
 	http.Handle("/", r)
 
-	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 func AllFoodInPantryHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
