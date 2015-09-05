@@ -132,7 +132,9 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 
 	id := int64(idInt)
 	quantity := float64(quantityInt)
+
 	log.Println(quantity) // TODO use quantity
+
 	s := Stock{}
 
 	row := db.QueryRow("SELECT id, user, brand, category, manufacturer, description FROM pantry WHERE id = ? AND user = ?", id, u.ID)
@@ -142,45 +144,21 @@ func ConsumeFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 		c.Fail("Could not get that db")
 		return
 	}
-	/*
-		_, err = db.Exec("INSERT INTO stats_values (value, corresponds, user) VALUES (?, 0, ?)", s.Calories, u.ID)
-		if err != nil {
-			log.Println(err)
-			c.Fail("Could not insert stats")
-			return
-		}*/
-	/*
-		_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ? AND user = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID, u.ID)
-		if err != nil {
-			log.Println(err)
-			c.Fail("Could not update pantry")
-			return
-		}*/
-	/*
-		if s.Weight-quantity < 2 {
-			message := "You are running out of " + s.Name
-			twilio.SendSMS(from, u.Phone, message, "", "")
-		}*/
+
+	_, err = db.Exec("UPDATE pantry SET weight = ? AND avail = ? WHERE id = ? AND user = ?", s.Weight-quantity, (s.Weight-quantity) >= 0, s.ID, u.ID)
+	if err != nil {
+		log.Println(err)
+		c.Fail("Could not update pantry")
+		return
+	}
+
+	if s.Weight-quantity < 2 {
+		message := "You are running out of " + s.Brand
+		twilio.SendSMS(from, u.Phone, message, "", "")
+	}
 
 	c.OK("consumed.")
 }
-
-/*
-type Stock struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	Weight      float64 `json:"weight"`
-	Calories    float64 `json:"calories"`
-	Cholesterol float64 `json:"cholesterol"`
-}
-
-type stock struct {
-	Name          string  `json:"item_name"`
-	TotalServes   float64 `json:"nf_servings_per_container"`
-	ServingWeight float64 `json:"nf_serving_weight_grams"`
-	Calories      float64 `json:"nf_calories"`
-	Cholesterol   float64 `json:"nf_cholesterol"`
-}*/
 
 type UPCRequest struct {
 	Authentication string            `json:"auth"`
@@ -194,12 +172,13 @@ type UPCResponse struct {
 }
 
 type Stock struct {
-	ID           int64  `json:"id"`
-	Brand        string `json:"brand"`
-	Category     string `json:"category"`
-	Manufacturer string `json:"manufacturer"`
-	Description  string `json:"description"`
-	UPC          string `json:"upc"`
+	ID           int64   `json:"id"`
+	Brand        string  `json:"brand"`
+	Category     string  `json:"category"`
+	Manufacturer string  `json:"manufacturer"`
+	Description  string  `json:"description"`
+	UPC          string  `json:"upc"`
+	Weight       float64 `json:"weight"`
 }
 
 // Pass in UPC number of new food
@@ -207,6 +186,15 @@ type Stock struct {
 // * Cache
 func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	c := communicator.New(w)
+	weightString := r.FormValue("weight")
+
+	weightInt, err := strconv.Atoi(weightString)
+	if err != nil {
+		c.Fail("Could not convert weight")
+	}
+
+	weight := float64(weightInt)
+
 	s := Stock{}
 
 	u, err := getUserFromToken(t)
@@ -254,7 +242,7 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	log.Println(upcResp.Result)
 	s = upcResp.Result
 
-	res, err := db.Exec("INSERT INTO pantry (user, brand, category, manufacturer, description) VALUES (?, ?, ?, ?, ?)", u.ID, s.Brand, s.Category, s.Manufacturer, s.Description)
+	res, err := db.Exec("INSERT INTO pantry (user, brand, category, manufacturer, description, weight, initial_weight) VALUES (?, ?, ?, ?, ?, ?, ?)", u.ID, s.Brand, s.Category, s.Manufacturer, s.Description, weight, weight)
 	if err != nil {
 		log.Println(err)
 		c.Fail("Kill the pantry")
@@ -268,6 +256,7 @@ func RegisterFoodHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	}
 
 	s.ID = id
+	s.Weight = weight
 
 	c.OKWithData("Here is your res", s)
 }
