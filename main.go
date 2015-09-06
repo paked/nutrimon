@@ -77,7 +77,7 @@ func main() {
 
 	r.HandleFunc("/pantry/queue", restrict.R(AddItemToQueueHandler)).Methods("POST")
 	r.HandleFunc("/pantry/mass_change", restrict.R(MassChangeHandler)).Methods("POST")
-	r.HandleFunc("/pantry/remove_poll", restrict.R(RemovePollHandler)).Methods("POST")
+	r.HandleFunc("/pantry/remove_poll", restrict.R(RemovePollHandler)).Methods("GET")
 
 	http.Handle("/", r)
 
