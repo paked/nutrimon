@@ -23,6 +23,12 @@ var (
 
 	twilio *gotwilio.Twilio
 	from   string
+
+	queue Stock
+
+	lastWeight int
+
+	removeAnItem bool
 )
 
 type User struct {
@@ -48,7 +54,7 @@ func main() {
 		return
 	}
 
-	//Twilio Config
+	// Twilio Config
 	from = "+14847184408"
 	accountSid := "AC800a64542126d28255c7c82aa375627f"
 	authToken := "f8c3c917be8b7ec2225a6066eff08719"
@@ -69,10 +75,104 @@ func main() {
 	r.HandleFunc("/pantry", restrict.R(AllFoodInPantryHandler)).Methods("GET")
 	r.HandleFunc("/pantry/consume", restrict.R(ConsumeFoodHandler)).Methods("POST")
 
+	r.HandleFunc("/pantry/queue", restrict.R(AddItemToQueueHandler)).Methods("POST")
+	r.HandleFunc("/pantry/mass_change", restrict.R(MassChangeHandler)).Methods("POST")
+	r.HandleFunc("/pantry/remove_poll", restrict.R(RemovePollHandler)).Methods("POST")
+
 	http.Handle("/", r)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
+
+func RemovePollHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+
+	c.OKWithData("Are you removing! I don't know!", removeAnItem)
+
+	removeAnItem = false
+}
+
+func MassChangeHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+
+	u, err := getUserFromToken(t)
+	if err != nil {
+		c.Fail("Could not get token")
+		return
+	}
+
+	amountString := r.FormValue("amount")
+	amount, err := strconv.Atoi(amountString)
+	if err != nil {
+		c.Fail("That is not a valid mass number")
+		return
+	}
+
+	if amount > lastWeight && queue != (Stock{}) {
+		_, err := db.Exec("INSERT INTO pantry (user, brand, category, manufacturer, description) VALUES (?, ?, ?, ?, ?)", u.ID, queue.Brand, queue.Category, queue.Manufacturer, queue.Description)
+		if err != nil {
+			log.Println(err)
+			c.Fail("Kill the pantry")
+			return
+		}
+
+		log.Println("Added item to queue")
+
+		queue = Stock{}
+	} else {
+		// make user show poll
+	}
+}
+
+func AddItemToQueueHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
+	c := communicator.New(w)
+
+	upc := r.FormValue("upc")
+
+	upcReq := UPCRequest{
+		Authentication: "Jad19r2OAfrNHpZH2BcuOZQUXDTLhcrS",
+		Method:         "FetchProductByUPC",
+		Parameters:     map[string]string{"upc": upc},
+	}
+
+	jsonStr, err := json.Marshal(upcReq)
+	if err != nil {
+		c.Fail("COuld not marshall req")
+		return
+	}
+
+	url := "http://api.simpleupc.com/v1.php"
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+
+	cli := http.Client{}
+	resp, err := cli.Do(req)
+	upcResp := UPCResponse{}
+
+	err = json.NewDecoder(resp.Body).Decode(&upcResp)
+	if err != nil {
+		c.Fail("Could not decode JSON")
+		return
+	}
+
+	if !upcResp.Success {
+		c.Fail("You what is up you failed!")
+		return
+	}
+
+	queue = upcResp.Result
+
+	c.OK("everything is fine, whatsit is in the queuue")
+}
+
+// user scans item, it gets put into the queue
+// an event is sent on mass change
+// if the mass is > than past measurements then add item in queue to waiting queue
+// else, present the user with a table view where they select which item left
+
+// Mass decrease, Scan => removing item
+// Scan, mass increase => adding item
 
 func AllFoodInPantryHandler(w http.ResponseWriter, r *http.Request, t *jwt.Token) {
 	c := communicator.New(w)
